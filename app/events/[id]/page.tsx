@@ -169,38 +169,44 @@ export default function EventDetailPage() {
   };
 
   const deleteExpense = async (expenseId: string) => {
-    const ok = window.confirm("この支出を削除しますか？");
-    if (!ok) return;
+  console.log("delete start", expenseId);
 
-    setDeletingExpenseId(expenseId);
+  const ok = window.confirm("この支出を削除しますか？");
+  if (!ok) return;
 
-    const { error: participantsError } = await supabase
-      .from("expense_participants")
-      .delete()
-      .eq("expense_id", expenseId);
+  setDeletingExpenseId(expenseId);
 
-    if (participantsError) {
-      console.error(participantsError);
-      alert("対象メンバーの削除に失敗しました");
-      setDeletingExpenseId(null);
-      return;
-    }
+  const { error: participantsError } = await supabase
+    .from("expense_participants")
+    .delete()
+    .eq("expense_id", expenseId);
 
-    const { error: expenseError } = await supabase
-      .from("expenses")
-      .delete()
-      .eq("id", expenseId);
+  console.log("participants delete error", participantsError);
 
+  if (participantsError) {
+    console.error(participantsError);
+    alert(`対象メンバーの削除に失敗しました: ${participantsError.message}`);
     setDeletingExpenseId(null);
+    return;
+  }
 
-    if (expenseError) {
-      console.error(expenseError);
-      alert("支出の削除に失敗しました");
-      return;
-    }
+  const { error: expenseError } = await supabase
+    .from("expenses")
+    .delete()
+    .eq("id", expenseId);
 
-    await fetchExpenses();
-  };
+  console.log("expense delete error", expenseError);
+
+  setDeletingExpenseId(null);
+
+  if (expenseError) {
+    console.error(expenseError);
+    alert(`支出の削除に失敗しました: ${expenseError.message}`);
+    return;
+  }
+
+  await fetchExpenses();
+};
 
   const getMemberName = (memberId: string) =>
     members.find((m) => m.id === memberId)?.name || "不明";

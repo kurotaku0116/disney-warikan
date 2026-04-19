@@ -88,66 +88,72 @@ export default function EditExpensePage() {
   };
 
   const handleSubmit = async () => {
-    if (!amount || !paidBy) {
-      alert("金額と支払った人を入力してください");
-      return;
-    }
+  if (!amount || !paidBy) {
+    alert("金額と支払った人を入力してください");
+    return;
+  }
 
-    if (selectedMembers.length === 0) {
-      alert("対象メンバーを1人以上選んでください");
-      return;
-    }
+  if (selectedMembers.length === 0) {
+    alert("対象メンバーを1人以上選んでください");
+    return;
+  }
 
-    setSaving(true);
+  setSaving(true);
 
-    const { error: updateError } = await supabase
-      .from("expenses")
-      .update({
-        amount: Number(amount),
-        paid_by_member_id: paidBy,
-        category,
-        memo,
-      })
-      .eq("id", expenseId);
+  const { error: updateError } = await supabase
+    .from("expenses")
+    .update({
+      amount: Number(amount),
+      paid_by_member_id: paidBy,
+      category,
+      memo,
+    })
+    .eq("id", expenseId);
 
-    if (updateError) {
-      console.error(updateError);
-      alert("支出更新に失敗しました");
-      setSaving(false);
-      return;
-    }
+  console.log("updateError", updateError);
 
-    const { error: deleteParticipantError } = await supabase
-      .from("expense_participants")
-      .delete()
-      .eq("expense_id", expenseId);
-
-    if (deleteParticipantError) {
-      console.error(deleteParticipantError);
-      alert("対象メンバー更新に失敗しました");
-      setSaving(false);
-      return;
-    }
-
-    const inserts = selectedMembers.map((memberId) => ({
-      expense_id: expenseId,
-      member_id: memberId,
-    }));
-
-    const { error: insertParticipantError } = await supabase
-      .from("expense_participants")
-      .insert(inserts);
-
+  if (updateError) {
+    console.error(updateError);
+    alert(`支出更新に失敗しました: ${updateError.message}`);
     setSaving(false);
+    return;
+  }
 
-    if (insertParticipantError) {
-      console.error(insertParticipantError);
-      alert("対象メンバー再登録に失敗しました");
-      return;
-    }
+  const { error: deleteParticipantError } = await supabase
+    .from("expense_participants")
+    .delete()
+    .eq("expense_id", expenseId);
 
-    router.push(`/events/${eventId}`);
-  };
+  console.log("deleteParticipantError", deleteParticipantError);
+
+  if (deleteParticipantError) {
+    console.error(deleteParticipantError);
+    alert(`対象メンバー更新に失敗しました: ${deleteParticipantError.message}`);
+    setSaving(false);
+    return;
+  }
+
+  const inserts = selectedMembers.map((memberId) => ({
+    expense_id: expenseId,
+    member_id: memberId,
+  }));
+
+  const { error: insertParticipantError } = await supabase
+    .from("expense_participants")
+    .insert(inserts);
+
+  console.log("insertParticipantError", insertParticipantError);
+
+  setSaving(false);
+
+  if (insertParticipantError) {
+    console.error(insertParticipantError);
+    alert(`対象メンバー再登録に失敗しました: ${insertParticipantError.message}`);
+    return;
+  }
+
+  router.push(`/events/${eventId}`);
+};
 
   if (loading) {
     return <div className="mx-auto max-w-xl px-4 py-6">読み込み中...</div>;
