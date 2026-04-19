@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 
 type Member = {
   id: string;
@@ -19,7 +19,7 @@ type ExpenseItem = {
   paid_by_member_id: string;
 };
 
-export default function Page() {
+export default function EventDetailPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
 
@@ -30,6 +30,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [addingMember, setAddingMember] = useState(false);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
 
   const fetchEvent = async () => {
     const { data, error } = await supabase
@@ -105,6 +106,68 @@ export default function Page() {
     await fetchMembers();
   };
 
+  const deleteMember = async (memberId: string) => {
+    const memberName = members.find((m) => m.id === memberId)?.name ?? "このメンバー";
+    const ok = window.confirm(`${memberName} を削除しますか？`);
+    if (!ok) return;
+
+    setDeletingMemberId(memberId);
+
+    const { data: paidExpenses, error: paidError } = await supabase
+      .from("expenses")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("paid_by_member_id", memberId)
+      .limit(1);
+
+    if (paidError) {
+      console.error(paidError);
+      alert("支払い履歴の確認に失敗しました");
+      setDeletingMemberId(null);
+      return;
+    }
+
+    if (paidExpenses && paidExpenses.length > 0) {
+      alert("このメンバーは支払った支出があるため削除できません。先に支出を削除または編集してください。");
+      setDeletingMemberId(null);
+      return;
+    }
+
+    const { data: participantRows, error: participantError } = await supabase
+      .from("expense_participants")
+      .select("id")
+      .eq("member_id", memberId)
+      .limit(1);
+
+    if (participantError) {
+      console.error(participantError);
+      alert("参加履歴の確認に失敗しました");
+      setDeletingMemberId(null);
+      return;
+    }
+
+    if (participantRows && participantRows.length > 0) {
+      alert("このメンバーは支出の対象に含まれているため削除できません。先に該当支出を編集または削除してください。");
+      setDeletingMemberId(null);
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from("members")
+      .delete()
+      .eq("id", memberId);
+
+    setDeletingMemberId(null);
+
+    if (deleteError) {
+      console.error(deleteError);
+      alert("メンバー削除に失敗しました");
+      return;
+    }
+
+    await fetchMembers();
+  };
+
   const deleteExpense = async (expenseId: string) => {
     const ok = window.confirm("この支出を削除しますか？");
     if (!ok) return;
@@ -169,7 +232,7 @@ export default function Page() {
       setLoading(false);
     };
 
-    init();
+    if (eventId) init();
   }, [eventId]);
 
   if (loading) {
@@ -216,8 +279,18 @@ export default function Page() {
         ) : (
           <ul className="space-y-3">
             {members.map((member) => (
-              <li key={member.id} className="rounded-xl bg-sky-50 p-4 shadow-sm">
-                {member.name}
+              <li
+                key={member.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-sky-50 p-4 shadow-sm"
+              >
+                <span>{member.name}</span>
+                <button
+                  onClick={() => deleteMember(member.id)}
+                  disabled={deletingMemberId === member.id}
+                  className="shrink-0 rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+                >
+                  {deletingMemberId === member.id ? "削除中..." : "削除"}
+                </button>
               </li>
             ))}
           </ul>
@@ -264,13 +337,22 @@ export default function Page() {
                     ) : null}
                   </div>
 
-                  <button
-                    onClick={() => deleteExpense(expense.id)}
-                    disabled={deletingExpenseId === expense.id}
-                    className="shrink-0 rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
-                  >
-                    {deletingExpenseId === expense.id ? "削除中..." : "削除"}
-                  </button>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    <Link
+                      href={`/events/${eventId}/expenses/${expense.id}/edit`}
+                      className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200"
+                    >
+                      編集
+                    </Link>
+
+                    <button
+                      onClick={() => deleteExpense(expense.id)}
+                      disabled={deletingExpenseId === expense.id}
+                      className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+                    >
+                      {deletingExpenseId === expense.id ? "削除中..." : "削除"}
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
