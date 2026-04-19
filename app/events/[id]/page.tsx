@@ -169,24 +169,18 @@ export default function EventDetailPage() {
   };
 
   const deleteExpense = async (expenseId: string) => {
-  console.log("delete start", expenseId);
+  alert(`delete開始: ${expenseId}`);
 
   const ok = window.confirm("この支出を削除しますか？");
   if (!ok) return;
-
-  setDeletingExpenseId(expenseId);
 
   const { error: participantsError } = await supabase
     .from("expense_participants")
     .delete()
     .eq("expense_id", expenseId);
 
-  console.log("participants delete error", participantsError);
-
   if (participantsError) {
-    console.error(participantsError);
-    alert(`対象メンバーの削除に失敗しました: ${participantsError.message}`);
-    setDeletingExpenseId(null);
+    alert(`participantsError: ${participantsError.message}`);
     return;
   }
 
@@ -195,16 +189,12 @@ export default function EventDetailPage() {
     .delete()
     .eq("id", expenseId);
 
-  console.log("expense delete error", expenseError);
-
-  setDeletingExpenseId(null);
-
   if (expenseError) {
-    console.error(expenseError);
-    alert(`支出の削除に失敗しました: ${expenseError.message}`);
+    alert(`expenseError: ${expenseError.message}`);
     return;
   }
 
+  alert("削除成功");
   await fetchExpenses();
 };
 
@@ -344,21 +334,27 @@ export default function EventDetailPage() {
                   </div>
 
                   <div className="flex shrink-0 flex-col gap-2">
-                    <Link
-                      href={`/events/${eventId}/expenses/${expense.id}/edit`}
-                      className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200"
-                    >
-                      編集
-                    </Link>
+  <button
+    onClick={() => {
+      alert(`編集クリック: ${expense.id}`);
+      window.location.href = `/events/${eventId}/expenses/${expense.id}/edit`;
+    }}
+    className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200"
+  >
+    編集
+  </button>
 
-                    <button
-                      onClick={() => deleteExpense(expense.id)}
-                      disabled={deletingExpenseId === expense.id}
-                      className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
-                    >
-                      {deletingExpenseId === expense.id ? "削除中..." : "削除"}
-                    </button>
-                  </div>
+  <button
+    onClick={() => {
+      alert(`削除クリック: ${expense.id}`);
+      deleteExpense(expense.id);
+    }}
+    disabled={deletingExpenseId === expense.id}
+    className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+  >
+    {deletingExpenseId === expense.id ? "削除中..." : "削除"}
+  </button>
+</div>
                 </div>
               </li>
             ))}
