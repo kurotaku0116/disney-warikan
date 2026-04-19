@@ -208,8 +208,7 @@ export default function ResultPage() {
         participantIds.length > 0 ? expense.amount / participantIds.length : 0;
 
       const payerName = getName(expense.paid_by_member_id);
-      const title =
-        expense.memo?.trim() || `${expense.category}の支出`;
+      const title = expense.memo?.trim() || `${expense.category}の支出`;
 
       const lines = participantIds.map((memberId) => {
         const memberName = getName(memberId);
@@ -311,6 +310,53 @@ export default function ResultPage() {
           <ExpenseChart expenses={expenses} />
         </section>
 
+        <section className="rounded-2xl bg-white p-4 shadow-md">
+          <h2 className="mb-4 text-lg font-semibold">今の状態（あといくら？）</h2>
+
+          <div className="space-y-3">
+            {summary.memberSummaries.map((member) => {
+              const isPlus = member.balance > 0;
+              const isMinus = member.balance < 0;
+
+              return (
+                <div
+                  key={member.memberId}
+                  className={`rounded-xl p-4 shadow-sm ${
+                    isPlus
+                      ? "bg-lime-50"
+                      : isMinus
+                      ? "bg-red-50"
+                      : "bg-gray-100"
+                  }`}
+                >
+                  <div className="mb-2 text-lg font-semibold">{member.name}</div>
+
+                  <div className="mb-2 text-sm text-gray-600">
+                    立て替え: ¥{Math.round(member.paid).toLocaleString()} / 負担: ¥
+                    {Math.round(member.owed).toLocaleString()}
+                  </div>
+
+                  <div
+                    className={`text-xl font-bold ${
+                      isPlus
+                        ? "text-lime-700"
+                        : isMinus
+                        ? "text-red-600"
+                        : "text-gray-600"
+                    }`}
+                  >
+                    {isPlus
+                      ? `あと ¥${Math.round(member.balance).toLocaleString()} 受け取る`
+                      : isMinus
+                      ? `あと ¥${Math.round(Math.abs(member.balance)).toLocaleString()} 払う`
+                      : "精算なし"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         <section className="rounded-2xl bg-lime-50 p-4">
           <h2 className="mb-3 text-lg font-semibold">支出ごとの計算明細</h2>
 
@@ -324,14 +370,10 @@ export default function ResultPage() {
                     <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-700">
                       {item.category}
                     </span>
-                    <span className="text-sm text-gray-500">
-                      {item.title}
-                    </span>
+                    <span className="text-sm text-gray-500">{item.title}</span>
                   </div>
 
-                  <div className="text-lg font-bold">
-                    {formatYen(item.amount)}
-                  </div>
+                  <div className="text-lg font-bold">{formatYen(item.amount)}</div>
 
                   <div className="mt-2 text-sm text-gray-600">
                     支払った人: {item.payerName}
@@ -371,57 +413,6 @@ export default function ResultPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-lime-50 p-4">
-          <h2 className="mb-3 text-lg font-semibold">メンバー別内訳</h2>
-
-          <div className="space-y-3">
-            {summary.memberSummaries.map((member) => (
-              <div key={member.memberId} className="rounded-xl bg-white p-4 shadow-sm">
-                <div className="mb-2 text-lg font-semibold">{member.name}</div>
-
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div>
-                    <div className="text-gray-500">払った額</div>
-                    <div className="mt-1 font-bold">{formatYen(member.paid)}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-gray-500">負担額</div>
-                    <div className="mt-1 font-bold">{formatYen(member.owed)}</div>
-                  </div>
-
-                  <div>
-                    <div className="text-gray-500">差額</div>
-                    <div
-                      className={`mt-1 font-bold ${
-                        member.balance > 0
-                          ? "text-lime-700"
-                          : member.balance < 0
-                          ? "text-red-600"
-                          : "text-gray-600"
-                      }`}
-                    >
-                      {member.balance > 0
-                        ? `+${formatYen(member.balance)}`
-                        : member.balance < 0
-                        ? `-${formatYen(Math.abs(member.balance))}`
-                        : "±¥0"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-sm text-gray-600">
-                  {member.balance > 0
-                    ? `${formatYen(member.balance)} 受け取る側`
-                    : member.balance < 0
-                    ? `${formatYen(Math.abs(member.balance))} 支払う側`
-                    : "精算なし"}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section className="rounded-2xl bg-sky-50 p-4">
           <h2 className="mb-3 text-lg font-semibold">最終精算</h2>
 
@@ -431,8 +422,11 @@ export default function ResultPage() {
             <ul className="space-y-3">
               {settlements.map((settlement, index) => (
                 <li key={index} className="rounded-xl bg-white p-4 text-lg shadow-sm">
-                  {getName(settlement.from)} → {getName(settlement.to)} に{" "}
-                  {formatYen(settlement.amount)}
+                  {getName(settlement.from)} が {getName(settlement.to)} に{" "}
+                  <span className="font-bold text-sky-700">
+                    ¥{Math.round(settlement.amount).toLocaleString()}
+                  </span>{" "}
+                  払う
                 </li>
               ))}
             </ul>
