@@ -107,8 +107,9 @@ export default function EventDetailPage() {
   };
 
   const deleteMember = async (memberId: string) => {
-    const memberName = members.find((m) => m.id === memberId)?.name ?? "このメンバー";
-    const ok = window.confirm(`${memberName} を削除しますか？`);
+    const targetName =
+      members.find((m) => m.id === memberId)?.name ?? "このメンバー";
+    const ok = window.confirm(`${targetName} を削除しますか？`);
     if (!ok) return;
 
     setDeletingMemberId(memberId);
@@ -128,7 +129,9 @@ export default function EventDetailPage() {
     }
 
     if (paidExpenses && paidExpenses.length > 0) {
-      alert("このメンバーは支払った支出があるため削除できません。先に支出を削除または編集してください。");
+      alert(
+        "このメンバーは支払った支出があるため削除できません。先に支出を削除または編集してください。"
+      );
       setDeletingMemberId(null);
       return;
     }
@@ -147,7 +150,9 @@ export default function EventDetailPage() {
     }
 
     if (participantRows && participantRows.length > 0) {
-      alert("このメンバーは支出の対象に含まれているため削除できません。先に該当支出を編集または削除してください。");
+      alert(
+        "このメンバーは支出の対象に含まれているため削除できません。先に該当支出を編集または削除してください。"
+      );
       setDeletingMemberId(null);
       return;
     }
@@ -169,52 +174,38 @@ export default function EventDetailPage() {
   };
 
   const deleteExpense = async (expenseId: string) => {
-  alert(`delete開始: ${expenseId}`);
+    const ok = window.confirm("この支出を削除しますか？");
+    if (!ok) return;
 
-  const ok = window.confirm("この支出を削除しますか？");
-  if (!ok) return;
+    setDeletingExpenseId(expenseId);
 
-  setDeletingExpenseId(expenseId);
+    const { error: participantsError } = await supabase
+      .from("expense_participants")
+      .delete()
+      .eq("expense_id", expenseId);
 
-  const { data: participantDeleted, error: participantsError } = await supabase
-    .from("expense_participants")
-    .delete()
-    .eq("expense_id", expenseId)
-    .select();
+    if (participantsError) {
+      console.error(participantsError);
+      alert("支出対象メンバーの削除に失敗しました");
+      setDeletingExpenseId(null);
+      return;
+    }
 
-  if (participantsError) {
+    const { error: expenseError } = await supabase
+      .from("expenses")
+      .delete()
+      .eq("id", expenseId);
+
     setDeletingExpenseId(null);
-    alert(`participantsError: ${participantsError.message}`);
-    return;
-  }
 
-  console.log("participantDeleted", participantDeleted);
+    if (expenseError) {
+      console.error(expenseError);
+      alert("支出の削除に失敗しました");
+      return;
+    }
 
-  const { data: expenseDeleted, error: expenseError } = await supabase
-    .from("expenses")
-    .delete()
-    .eq("id", expenseId)
-    .select();
-
-  if (expenseError) {
-    setDeletingExpenseId(null);
-    alert(`expenseError: ${expenseError.message}`);
-    return;
-  }
-
-  console.log("expenseDeleted", expenseDeleted);
-
-  setDeletingExpenseId(null);
-
-  if (!expenseDeleted || expenseDeleted.length === 0) {
-    alert("expensesテーブルで削除対象が0件でした");
-    return;
-  }
-
-  alert("削除成功");
-
-  await fetchExpenses();
-};
+    await fetchExpenses();
+  };
 
   const getMemberName = (memberId: string) =>
     members.find((m) => m.id === memberId)?.name || "不明";
@@ -338,8 +329,9 @@ export default function EventDetailPage() {
                       </span>
                     </div>
 
-                    <div className="text-lg font-bold">¥{expense.amount.toLocaleString()}</div>
-<div className="mt-1 text-xs text-gray-400">id: {expense.id}</div>
+                    <div className="text-lg font-bold">
+                      ¥{expense.amount.toLocaleString()}
+                    </div>
 
                     <div className="mt-1 text-sm text-gray-600">
                       支払った人: {getMemberName(expense.paid_by_member_id)}
@@ -353,27 +345,23 @@ export default function EventDetailPage() {
                   </div>
 
                   <div className="flex shrink-0 flex-col gap-2">
-  <button
-    onClick={() => {
-      alert(`編集クリック: ${expense.id}`);
-      window.location.href = `/events/${eventId}/expenses/${expense.id}/edit`;
-    }}
-    className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200"
-  >
-    編集
-  </button>
+                    <button
+                      onClick={() => {
+                        window.location.href = `/events/${eventId}/expenses/${expense.id}/edit`;
+                      }}
+                      className="rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200"
+                    >
+                      編集
+                    </button>
 
-  <button
-    onClick={() => {
-      alert(`削除クリック: ${expense.id}`);
-      deleteExpense(expense.id);
-    }}
-    disabled={deletingExpenseId === expense.id}
-    className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
-  >
-    {deletingExpenseId === expense.id ? "削除中..." : "削除"}
-  </button>
-</div>
+                    <button
+                      onClick={() => deleteExpense(expense.id)}
+                      disabled={deletingExpenseId === expense.id}
+                      className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+                    >
+                      {deletingExpenseId === expense.id ? "削除中..." : "削除"}
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
