@@ -19,6 +19,11 @@ type ExpenseItem = {
   paid_by_member_id: string;
 };
 
+type ExpenseParticipantRow = {
+  expense_id: string;
+  member_id: string;
+};
+
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
@@ -26,6 +31,9 @@ export default function EventDetailPage() {
   const [eventTitle, setEventTitle] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [expenseParticipants, setExpenseParticipants] = useState<
+    ExpenseParticipantRow[]
+  >([]);
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
   const [addingMember, setAddingMember] = useState(false);
@@ -75,6 +83,25 @@ export default function EventDetailPage() {
     }
 
     setExpenses(data || []);
+
+    const expenseIds = (data || []).map((expense) => expense.id);
+
+    if (expenseIds.length === 0) {
+      setExpenseParticipants([]);
+      return;
+    }
+
+    const { data: participantData, error: participantError } = await supabase
+      .from("expense_participants")
+      .select("expense_id, member_id")
+      .in("expense_id", expenseIds);
+
+    if (participantError) {
+      console.error(participantError);
+      return;
+    }
+
+    setExpenseParticipants(participantData || []);
   };
 
   const addMember = async () => {
@@ -210,6 +237,14 @@ export default function EventDetailPage() {
   const getMemberName = (memberId: string) =>
     members.find((m) => m.id === memberId)?.name || "不明";
 
+  const getParticipantNames = (expenseId: string) => {
+    const targetIds = expenseParticipants
+      .filter((row) => row.expense_id === expenseId)
+      .map((row) => row.member_id);
+
+    return targetIds.map((memberId) => getMemberName(memberId));
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return `${date.getMonth() + 1}/${date.getDate()} ${String(
@@ -335,6 +370,10 @@ export default function EventDetailPage() {
 
                     <div className="mt-1 text-sm text-gray-600">
                       支払った人: {getMemberName(expense.paid_by_member_id)}
+                    </div>
+
+                    <div className="mt-1 text-sm text-gray-600">
+                      対象: {getParticipantNames(expense.id).join(", ")}
                     </div>
 
                     {expense.memo ? (
