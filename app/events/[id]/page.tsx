@@ -174,27 +174,45 @@ export default function EventDetailPage() {
   const ok = window.confirm("この支出を削除しますか？");
   if (!ok) return;
 
-  const { error: participantsError } = await supabase
+  setDeletingExpenseId(expenseId);
+
+  const { data: participantDeleted, error: participantsError } = await supabase
     .from("expense_participants")
     .delete()
-    .eq("expense_id", expenseId);
+    .eq("expense_id", expenseId)
+    .select();
 
   if (participantsError) {
+    setDeletingExpenseId(null);
     alert(`participantsError: ${participantsError.message}`);
     return;
   }
 
-  const { error: expenseError } = await supabase
+  console.log("participantDeleted", participantDeleted);
+
+  const { data: expenseDeleted, error: expenseError } = await supabase
     .from("expenses")
     .delete()
-    .eq("id", expenseId);
+    .eq("id", expenseId)
+    .select();
 
   if (expenseError) {
+    setDeletingExpenseId(null);
     alert(`expenseError: ${expenseError.message}`);
     return;
   }
 
+  console.log("expenseDeleted", expenseDeleted);
+
+  setDeletingExpenseId(null);
+
+  if (!expenseDeleted || expenseDeleted.length === 0) {
+    alert("expensesテーブルで削除対象が0件でした");
+    return;
+  }
+
   alert("削除成功");
+
   await fetchExpenses();
 };
 
@@ -321,6 +339,7 @@ export default function EventDetailPage() {
                     </div>
 
                     <div className="text-lg font-bold">¥{expense.amount.toLocaleString()}</div>
+<div className="mt-1 text-xs text-gray-400">id: {expense.id}</div>
 
                     <div className="mt-1 text-sm text-gray-600">
                       支払った人: {getMemberName(expense.paid_by_member_id)}
