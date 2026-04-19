@@ -39,6 +39,25 @@ type MemberSummary = {
   balance: number;
 };
 
+type ExpenseBreakdown = {
+  expenseId: string;
+  title: string;
+  category: string;
+  amount: number;
+  payerId: string;
+  payerName: string;
+  participantIds: string[];
+  participantNames: string[];
+  share: number;
+  lines: {
+    memberId: string;
+    memberName: string;
+    text: string;
+    amount: number;
+    isSelf: boolean;
+  }[];
+};
+
 export default function ResultPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -178,6 +197,50 @@ export default function ResultPage() {
     };
   }, [members, expenses, expenseParticipants]);
 
+  const expenseBreakdowns = useMemo<ExpenseBreakdown[]>(() => {
+    return expenses.map((expense) => {
+      const participantIds = expenseParticipants
+        .filter((row) => row.expense_id === expense.id)
+        .map((row) => row.member_id);
+
+      const participantNames = participantIds.map((id) => getName(id));
+      const share =
+        participantIds.length > 0 ? expense.amount / participantIds.length : 0;
+
+      const payerName = getName(expense.paid_by_member_id);
+      const title =
+        expense.memo?.trim() || `${expense.category}の支出`;
+
+      const lines = participantIds.map((memberId) => {
+        const memberName = getName(memberId);
+        const isSelf = memberId === expense.paid_by_member_id;
+
+        return {
+          memberId,
+          memberName,
+          amount: share,
+          isSelf,
+          text: isSelf
+            ? `${memberName} が自分の分として ${Math.round(share).toLocaleString()}円`
+            : `${memberName} → ${payerName} に ${Math.round(share).toLocaleString()}円分`,
+        };
+      });
+
+      return {
+        expenseId: expense.id,
+        title,
+        category: expense.category,
+        amount: expense.amount,
+        payerId: expense.paid_by_member_id,
+        payerName,
+        participantIds,
+        participantNames,
+        share,
+        lines,
+      };
+    });
+  }, [expenses, expenseParticipants, members]);
+
   const handleDownload = async () => {
     const node = document.getElementById("result-card");
     if (!node) return;
@@ -246,6 +309,66 @@ export default function ResultPage() {
         <section className="rounded-2xl bg-white">
           <h2 className="mb-4 text-lg font-semibold">カテゴリ内訳</h2>
           <ExpenseChart expenses={expenses} />
+        </section>
+
+        <section className="rounded-2xl bg-lime-50 p-4">
+          <h2 className="mb-3 text-lg font-semibold">支出ごとの計算明細</h2>
+
+          <div className="space-y-4">
+            {expenseBreakdowns.length === 0 ? (
+              <p className="text-gray-600">支出がありません</p>
+            ) : (
+              expenseBreakdowns.map((item) => (
+                <div key={item.expenseId} className="rounded-xl bg-white p-4 shadow-sm">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-700">
+                      {item.category}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {item.title}
+                    </span>
+                  </div>
+
+                  <div className="text-lg font-bold">
+                    {formatYen(item.amount)}
+                  </div>
+
+                  <div className="mt-2 text-sm text-gray-600">
+                    支払った人: {item.payerName}
+                  </div>
+
+                  <div className="mt-1 text-sm text-gray-600">
+                    対象: {item.participantNames.join(", ")}
+                  </div>
+
+                  <div className="mt-1 text-sm text-gray-600">
+                    1人あたり: {formatYen(item.share)}
+                  </div>
+
+                  <div className="mt-3 rounded-xl bg-sky-50 p-3">
+                    <div className="mb-2 text-sm font-semibold text-gray-700">
+                      この支出の内訳
+                    </div>
+
+                    <ul className="space-y-2">
+                      {item.lines.map((line, index) => (
+                        <li
+                          key={`${item.expenseId}-${line.memberId}-${index}`}
+                          className={`rounded-lg p-3 text-sm ${
+                            line.isSelf
+                              ? "bg-gray-100 text-gray-700"
+                              : "bg-white text-sky-800"
+                          }`}
+                        >
+                          {line.text}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </section>
 
         <section className="rounded-2xl bg-lime-50 p-4">
