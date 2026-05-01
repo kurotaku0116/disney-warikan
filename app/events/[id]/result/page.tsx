@@ -39,23 +39,12 @@ type MemberSummary = {
   balance: number;
 };
 
-type ExpenseBreakdown = {
+type PersonalAdvanceLine = {
   expenseId: string;
   title: string;
   category: string;
+  personName: string;
   amount: number;
-  payerId: string;
-  payerName: string;
-  participantIds: string[];
-  participantNames: string[];
-  share: number;
-  lines: {
-    memberId: string;
-    memberName: string;
-    text: string;
-    amount: number;
-    isSelf: boolean;
-  }[];
 };
 
 export default function ResultPage() {
@@ -69,6 +58,7 @@ export default function ResultPage() {
     ExpenseParticipantRow[]
   >([]);
   const [settlements, setSettlements] = useState<SettlementItem[]>([]);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -131,6 +121,11 @@ export default function ResultPage() {
       setExpenses(expensesData || []);
       setExpenseParticipants(participantData);
       setSettlements(result.settlements || []);
+
+      if ((membersData || []).length > 0) {
+        setSelectedMemberId((membersData || [])[0].id);
+      }
+
       setLoading(false);
     };
 
@@ -142,12 +137,12 @@ export default function ResultPage() {
   const getName = (id: string) =>
     members.find((member) => member.id === id)?.name || "不明";
 
+  const formatYen = (value: number) => `¥${Math.round(value).toLocaleString()}`;
+
   const summary = useMemo(() => {
     const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
     const memberCount = members.length;
     const expenseCount = expenses.length;
-    const perPersonAmount =
-      memberCount > 0 ? Math.round(totalAmount / memberCount) : 0;
 
     const paidMap: Record<string, number> = {};
     const owedMap: Record<string, number> = {};
@@ -177,14 +172,13 @@ export default function ResultPage() {
     const memberSummaries: MemberSummary[] = members.map((member) => {
       const paid = paidMap[member.id] || 0;
       const owed = owedMap[member.id] || 0;
-      const balance = paid - owed;
 
       return {
         memberId: member.id,
         name: member.name,
         paid,
         owed,
-        balance,
+        balance: paid - owed,
       };
     });
 
@@ -192,53 +186,80 @@ export default function ResultPage() {
       totalAmount,
       memberCount,
       expenseCount,
-      perPersonAmount,
       memberSummaries,
     };
   }, [members, expenses, expenseParticipants]);
 
-  const expenseBreakdowns = useMemo<ExpenseBreakdown[]>(() => {
-    return expenses.map((expense) => {
+  const selectedMember = members.find((m) => m.id === selectedMemberId);
+
+  const selectedMemberSummary = summary.memberSummaries.find(
+    (m) => m.memberId === selectedMemberId
+  );
+
+  const personalAdvance = useMemo(() => {
+    const advancedForOthers: PersonalAdvanceLine[] = [];
+    const advancedByOthers: PersonalAdvanceLine[] = [];
+
+    expenses.forEach((expense) => {
       const participantIds = expenseParticipants
         .filter((row) => row.expense_id === expense.id)
         .map((row) => row.member_id);
 
-      const participantNames = participantIds.map((id) => getName(id));
-      const share =
-        participantIds.length > 0 ? expense.amount / participantIds.length : 0;
+      if (participantIds.length === 0) return;
 
-      const payerName = getName(expense.paid_by_member_id);
+      const share = expense.amount / participantIds.length;
       const title = expense.memo?.trim() || `${expense.category}の支出`;
 
-      const lines = participantIds.map((memberId) => {
-        const memberName = getName(memberId);
-        const isSelf = memberId === expense.paid_by_member_id;
+      if (expense.paid_by_member_id === selectedMemberId) {
+        participantIds
+          .filter((memberId) => memberId !== selectedMemberId)
+          .forEach((memberId) => {
+            advancedForOthers.push({
+              expenseId: expense.id,
+              title,
+              category: expense.category,
+              personName: getName(memberId),
+              amount: share,
+            });
+          });
+      }
 
-        return {
-          memberId,
-          memberName,
+      if (
+        expense.paid_by_member_id !== selectedMemberId &&
+        participantIds.includes(selectedMemberId)
+      ) {
+        advancedByOthers.push({
+          expenseId: expense.id,
+          title,
+          category: expense.category,
+          personName: getName(expense.paid_by_member_id),
           amount: share,
-          isSelf,
-          text: isSelf
-            ? `${memberName} が自分の分として ${Math.round(share).toLocaleString()}円`
-            : `${memberName} → ${payerName} に ${Math.round(share).toLocaleString()}円分`,
-        };
-      });
-
-      return {
-        expenseId: expense.id,
-        title,
-        category: expense.category,
-        amount: expense.amount,
-        payerId: expense.paid_by_member_id,
-        payerName,
-        participantIds,
-        participantNames,
-        share,
-        lines,
-      };
+        });
+      }
     });
-  }, [expenses, expenseParticipants, members]);
+
+    const advancedForOthersTotal = advancedForOthers.reduce(
+      (sum, line) => sum + line.amount,
+      0
+    );
+
+    const advancedByOthersTotal = advancedByOthers.reduce(
+      (sum, line) => sum + line.amount,
+      0
+    );
+
+    const paying = settlements.filter((s) => s.from === selectedMemberId);
+    const receiving = settlements.filter((s) => s.to === selectedMemberId);
+
+    return {
+      advancedForOthers,
+      advancedByOthers,
+      advancedForOthersTotal,
+      advancedByOthersTotal,
+      paying,
+      receiving,
+    };
+  }, [expenses, expenseParticipants, selectedMemberId, settlements, members]);
 
   const handleDownload = async () => {
     const node = document.getElementById("result-card");
@@ -250,26 +271,6 @@ export default function ResultPage() {
     link.href = dataUrl;
     link.click();
   };
-
-  const formatYen = (value: number) => `¥${Math.round(value).toLocaleString()}`;
-
-
-  const getMemberSummary = (memberId: string) =>
-  summary.memberSummaries.find((member) => member.memberId === memberId);
-
-const formatSignedYen = (value: number) => {
-  const rounded = Math.round(value);
-
-  if (rounded > 0) {
-    return `+¥${rounded.toLocaleString()}`;
-  }
-
-  if (rounded < 0) {
-    return `-¥${Math.abs(rounded).toLocaleString()}`;
-  }
-
-  return "±¥0";
-};
 
   if (loading) {
     return <div className="mx-auto max-w-xl px-4 py-6">読み込み中...</div>;
@@ -292,35 +293,164 @@ const formatSignedYen = (value: number) => {
         <section className="rounded-2xl bg-sky-50 p-4">
           <h2 className="mb-3 text-lg font-semibold">計算概要</h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <div className="text-sm text-gray-500">合計支出</div>
-              <div className="mt-1 text-xl font-bold text-sky-700">
+              <div className="mt-1 text-lg font-bold text-sky-700">
                 {formatYen(summary.totalAmount)}
               </div>
             </div>
 
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <div className="text-sm text-gray-500">支出件数</div>
-              <div className="mt-1 text-xl font-bold text-sky-700">
+              <div className="mt-1 text-lg font-bold text-sky-700">
                 {summary.expenseCount}件
               </div>
             </div>
 
             <div className="rounded-xl bg-white p-4 shadow-sm">
               <div className="text-sm text-gray-500">人数</div>
-              <div className="mt-1 text-xl font-bold text-sky-700">
+              <div className="mt-1 text-lg font-bold text-sky-700">
                 {summary.memberCount}人
               </div>
             </div>
+          </div>
+        </section>
 
-            <div className="rounded-xl bg-white p-4 shadow-sm">
-              <div className="text-sm text-gray-500">1人あたり</div>
-              <div className="mt-1 text-xl font-bold text-sky-700">
-                {formatYen(summary.perPersonAmount)}
+        <section className="rounded-2xl bg-white p-4 shadow-md">
+          <h2 className="mb-4 text-lg font-semibold">人ごとの立て替え状況</h2>
+
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-2">
+            {members.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => setSelectedMemberId(member.id)}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold ${
+                  selectedMemberId === member.id
+                    ? "bg-sky-400 text-white"
+                    : "bg-sky-100 text-sky-700"
+                }`}
+              >
+                {member.name}
+              </button>
+            ))}
+          </div>
+
+          {selectedMember && selectedMemberSummary ? (
+            <div className="space-y-4">
+              <div
+                className={`rounded-2xl p-4 ${
+                  selectedMemberSummary.balance > 0
+                    ? "bg-lime-50"
+                    : selectedMemberSummary.balance < 0
+                    ? "bg-red-50"
+                    : "bg-gray-100"
+                }`}
+              >
+                <div className="text-lg font-bold">{selectedMember.name}</div>
+
+                <div className="mt-2 text-sm text-gray-600">
+                  立て替えた合計: {formatYen(personalAdvance.advancedForOthersTotal)}
+                </div>
+                <div className="mt-1 text-sm text-gray-600">
+                  立て替えてもらった合計: {formatYen(personalAdvance.advancedByOthersTotal)}
+                </div>
+
+                <div className="mt-3 text-xl font-bold">
+                  {selectedMemberSummary.balance > 0
+                    ? `あと ${formatYen(selectedMemberSummary.balance)} 受け取る`
+                    : selectedMemberSummary.balance < 0
+                    ? `あと ${formatYen(Math.abs(selectedMemberSummary.balance))} 払う`
+                    : "精算なし"}
+                </div>
+
+                <div className="mt-2 text-xs text-gray-500">
+                  ※ 立替額・負担額を全体で相殺した結果です。
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-lime-50 p-4">
+                <h3 className="mb-3 font-semibold">この人が立て替えた相手</h3>
+
+                {personalAdvance.advancedForOthers.length === 0 ? (
+                  <p className="text-sm text-gray-600">なし</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {personalAdvance.advancedForOthers.map((line, index) => (
+                      <li key={`${line.expenseId}-for-${index}`} className="rounded-xl bg-white p-3 text-sm shadow-sm">
+                        <div className="font-semibold">{line.personName} の分を {formatYen(line.amount)} 立て替え</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {line.title} / {line.category}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-2xl bg-red-50 p-4">
+                <h3 className="mb-3 font-semibold">この人が立て替えてもらった相手</h3>
+
+                {personalAdvance.advancedByOthers.length === 0 ? (
+                  <p className="text-sm text-gray-600">なし</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {personalAdvance.advancedByOthers.map((line, index) => (
+                      <li key={`${line.expenseId}-by-${index}`} className="rounded-xl bg-white p-3 text-sm shadow-sm">
+                        <div className="font-semibold">{line.personName} に {formatYen(line.amount)} 立て替えてもらった</div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {line.title} / {line.category}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="rounded-2xl bg-sky-50 p-4">
+                <h3 className="mb-3 font-semibold">この人の最終精算</h3>
+
+                {personalAdvance.paying.length === 0 &&
+                personalAdvance.receiving.length === 0 ? (
+                  <p className="text-sm text-gray-600">精算なし</p>
+                ) : (
+                  <div className="space-y-3">
+                    {personalAdvance.paying.length > 0 ? (
+                      <div>
+                        <div className="mb-2 text-sm font-semibold text-red-600">
+                          払う
+                        </div>
+                        <ul className="space-y-2">
+                          {personalAdvance.paying.map((s, index) => (
+                            <li key={`pay-${index}`} className="rounded-xl bg-white p-3 text-sm shadow-sm">
+                              {getName(s.to)} に {formatYen(s.amount)} 払う
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {personalAdvance.receiving.length > 0 ? (
+                      <div>
+                        <div className="mb-2 text-sm font-semibold text-lime-700">
+                          受け取る
+                        </div>
+                        <ul className="space-y-2">
+                          {personalAdvance.receiving.map((s, index) => (
+                            <li key={`receive-${index}`} className="rounded-xl bg-white p-3 text-sm shadow-sm">
+                              {getName(s.from)} から {formatYen(s.amount)} 受け取る
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          ) : (
+            <p className="text-gray-600">メンバーがいません</p>
+          )}
         </section>
 
         <section className="rounded-2xl bg-white">
@@ -328,167 +458,25 @@ const formatSignedYen = (value: number) => {
           <ExpenseChart expenses={expenses} />
         </section>
 
-        <section className="rounded-2xl bg-white p-4 shadow-md">
-          <h2 className="mb-4 text-lg font-semibold">今の状態（あといくら？）</h2>
-
-          <div className="space-y-3">
-            {summary.memberSummaries.map((member) => {
-              const isPlus = member.balance > 0;
-              const isMinus = member.balance < 0;
-
-              return (
-                <div
-                  key={member.memberId}
-                  className={`rounded-xl p-4 shadow-sm ${
-                    isPlus
-                      ? "bg-lime-50"
-                      : isMinus
-                      ? "bg-red-50"
-                      : "bg-gray-100"
-                  }`}
-                >
-                  <div className="mb-2 text-lg font-semibold">{member.name}</div>
-
-                  <div className="mb-2 text-sm text-gray-600">
-                    立て替え: ¥{Math.round(member.paid).toLocaleString()} / 負担: ¥
-                    {Math.round(member.owed).toLocaleString()}
-                  </div>
-
-                  <div
-                    className={`text-xl font-bold ${
-                      isPlus
-                        ? "text-lime-700"
-                        : isMinus
-                        ? "text-red-600"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    {isPlus
-                      ? `あと ¥${Math.round(member.balance).toLocaleString()} 受け取る`
-                      : isMinus
-                      ? `あと ¥${Math.round(Math.abs(member.balance)).toLocaleString()} 払う`
-                      : "精算なし"}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="rounded-2xl bg-lime-50 p-4">
-          <h2 className="mb-3 text-lg font-semibold">支出ごとの計算明細</h2>
-
-          <div className="space-y-4">
-            {expenseBreakdowns.length === 0 ? (
-              <p className="text-gray-600">支出がありません</p>
-            ) : (
-              expenseBreakdowns.map((item) => (
-                <div key={item.expenseId} className="rounded-xl bg-white p-4 shadow-sm">
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-700">
-                      {item.category}
-                    </span>
-                    <span className="text-sm text-gray-500">{item.title}</span>
-                  </div>
-
-                  <div className="text-lg font-bold">{formatYen(item.amount)}</div>
-
-                  <div className="mt-2 text-sm text-gray-600">
-                    支払った人: {item.payerName}
-                  </div>
-
-                  <div className="mt-1 text-sm text-gray-600">
-                    対象: {item.participantNames.join(", ")}
-                  </div>
-
-                  <div className="mt-1 text-sm text-gray-600">
-                    1人あたり: {formatYen(item.share)}
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-sky-50 p-3">
-                    <div className="mb-2 text-sm font-semibold text-gray-700">
-                      この支出の内訳
-                    </div>
-
-                    <ul className="space-y-2">
-                      {item.lines.map((line, index) => (
-                        <li
-                          key={`${item.expenseId}-${line.memberId}-${index}`}
-                          className={`rounded-lg p-3 text-sm ${
-                            line.isSelf
-                              ? "bg-gray-100 text-gray-700"
-                              : "bg-white text-sky-800"
-                          }`}
-                        >
-                          {line.text}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
         <section className="rounded-2xl bg-sky-50 p-4">
-  <h2 className="mb-3 text-lg font-semibold">最終精算</h2>
+          <h2 className="mb-3 text-lg font-semibold">全体の最終精算</h2>
 
-  {settlements.length === 0 ? (
-    <p className="text-gray-600">精算なし</p>
-  ) : (
-    <ul className="space-y-3">
-      {settlements.map((settlement, index) => {
-        const fromSummary = getMemberSummary(settlement.from);
-        const toSummary = getMemberSummary(settlement.to);
-
-        return (
-          <li key={index} className="rounded-xl bg-white p-4 shadow-sm">
-            <div className="text-lg">
-              {getName(settlement.from)} が {getName(settlement.to)} に{" "}
-              <span className="font-bold text-sky-700">
-                {formatYen(settlement.amount)}
-              </span>{" "}
-              払う
-            </div>
-
-            <div className="mt-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
-              <div className="mb-2 font-semibold">根拠</div>
-
-              {fromSummary ? (
-                <div className="mb-2">
-                  <span className="font-semibold">{fromSummary.name}</span>
-                  ：立替 {formatYen(fromSummary.paid)} - 負担{" "}
-                  {formatYen(fromSummary.owed)} ={" "}
-                  <span className="font-bold text-red-600">
-                    {formatSignedYen(fromSummary.balance)}
-                  </span>
-                  <div className="mt-1 text-xs text-gray-500">
-                    → 足りない分があるので支払う側
-                  </div>
-                </div>
-              ) : null}
-
-              {toSummary ? (
-                <div>
-                  <span className="font-semibold">{toSummary.name}</span>
-                  ：立替 {formatYen(toSummary.paid)} - 負担{" "}
-                  {formatYen(toSummary.owed)} ={" "}
-                  <span className="font-bold text-lime-700">
-                    {formatSignedYen(toSummary.balance)}
-                  </span>
-                  <div className="mt-1 text-xs text-gray-500">
-                    → 多く立て替えているので受け取る側
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  )}
-</section>
+          {settlements.length === 0 ? (
+            <p className="text-gray-600">精算なし</p>
+          ) : (
+            <ul className="space-y-3">
+              {settlements.map((settlement, index) => (
+                <li key={index} className="rounded-xl bg-white p-4 text-lg shadow-sm">
+                  {getName(settlement.from)} が {getName(settlement.to)} に{" "}
+                  <span className="font-bold text-sky-700">
+                    {formatYen(settlement.amount)}
+                  </span>{" "}
+                  払う
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
 
       <button
