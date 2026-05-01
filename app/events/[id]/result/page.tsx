@@ -253,6 +253,24 @@ export default function ResultPage() {
 
   const formatYen = (value: number) => `¥${Math.round(value).toLocaleString()}`;
 
+
+  const getMemberSummary = (memberId: string) =>
+  summary.memberSummaries.find((member) => member.memberId === memberId);
+
+const formatSignedYen = (value: number) => {
+  const rounded = Math.round(value);
+
+  if (rounded > 0) {
+    return `+¥${rounded.toLocaleString()}`;
+  }
+
+  if (rounded < 0) {
+    return `-¥${Math.abs(rounded).toLocaleString()}`;
+  }
+
+  return "±¥0";
+};
+
   if (loading) {
     return <div className="mx-auto max-w-xl px-4 py-6">読み込み中...</div>;
   }
@@ -414,24 +432,63 @@ export default function ResultPage() {
         </section>
 
         <section className="rounded-2xl bg-sky-50 p-4">
-          <h2 className="mb-3 text-lg font-semibold">最終精算</h2>
+  <h2 className="mb-3 text-lg font-semibold">最終精算</h2>
 
-          {settlements.length === 0 ? (
-            <p className="text-gray-600">精算なし</p>
-          ) : (
-            <ul className="space-y-3">
-              {settlements.map((settlement, index) => (
-                <li key={index} className="rounded-xl bg-white p-4 text-lg shadow-sm">
-                  {getName(settlement.from)} が {getName(settlement.to)} に{" "}
-                  <span className="font-bold text-sky-700">
-                    ¥{Math.round(settlement.amount).toLocaleString()}
-                  </span>{" "}
-                  払う
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+  {settlements.length === 0 ? (
+    <p className="text-gray-600">精算なし</p>
+  ) : (
+    <ul className="space-y-3">
+      {settlements.map((settlement, index) => {
+        const fromSummary = getMemberSummary(settlement.from);
+        const toSummary = getMemberSummary(settlement.to);
+
+        return (
+          <li key={index} className="rounded-xl bg-white p-4 shadow-sm">
+            <div className="text-lg">
+              {getName(settlement.from)} が {getName(settlement.to)} に{" "}
+              <span className="font-bold text-sky-700">
+                {formatYen(settlement.amount)}
+              </span>{" "}
+              払う
+            </div>
+
+            <div className="mt-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-700">
+              <div className="mb-2 font-semibold">根拠</div>
+
+              {fromSummary ? (
+                <div className="mb-2">
+                  <span className="font-semibold">{fromSummary.name}</span>
+                  ：立替 {formatYen(fromSummary.paid)} - 負担{" "}
+                  {formatYen(fromSummary.owed)} ={" "}
+                  <span className="font-bold text-red-600">
+                    {formatSignedYen(fromSummary.balance)}
+                  </span>
+                  <div className="mt-1 text-xs text-gray-500">
+                    → 足りない分があるので支払う側
+                  </div>
+                </div>
+              ) : null}
+
+              {toSummary ? (
+                <div>
+                  <span className="font-semibold">{toSummary.name}</span>
+                  ：立替 {formatYen(toSummary.paid)} - 負担{" "}
+                  {formatYen(toSummary.owed)} ={" "}
+                  <span className="font-bold text-lime-700">
+                    {formatSignedYen(toSummary.balance)}
+                  </span>
+                  <div className="mt-1 text-xs text-gray-500">
+                    → 多く立て替えているので受け取る側
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  )}
+</section>
       </div>
 
       <button
